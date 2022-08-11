@@ -19,7 +19,9 @@ class LSTM_Bi(nn.Module):
         self.word_embeddings = nn.Embedding(in_dim, embedding_dim)
         self.lstm_f = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.lstm_b = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        self.fc1 = nn.Linear(hidden_dim, hidden_dim)
+        self.max_pool = nn.AdaptiveMaxPool1d(hidden_dim)
+        self.avg_pool = nn.AdaptiveAvgPool1d(hidden_dim)
+        self.fc1 = nn.Linear(hidden_dim*2, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, out_dim)
         self.fixed_len = fixed_len
@@ -31,9 +33,6 @@ class LSTM_Bi(nn.Module):
         # pad <EOS> & <SOS>
         Xs_f = [[_aa2id['<SOS>']] + seq[:-1] for seq in Xs]
         Xs_b = [[_aa2id['<EOS>']] + seq[::-1][:-1] for seq in Xs]
-        
-        # get sequence lengths
-        X_len = len(Xs_f[0])
         
         # list to *.tensor
         Xs_f = torch.tensor(Xs_f, device=self.device)
@@ -52,26 +51,24 @@ class LSTM_Bi(nn.Module):
         # lstm
         lstm_out_f, _ = self.lstm_f(Xs_f, ini_hc_state_f)
         lstm_out_b, _ = self.lstm_b(Xs_b, ini_hc_state_b)
-        
-        # flatten forward-lstm output
-        lstm_out_f = lstm_out_f.reshape(-1, self.hidden_dim)
-        
-        # flatten backward-lstm output
-        idx_b = torch.tensor(list(range(X_len))[::-1], device=self.device)
-        lstm_out_b = torch.index_select(lstm_out_b, 1, idx_b)
-        lstm_out_b = lstm_out_b.reshape(-1, self.hidden_dim)    
 
         lstm_out_valid = lstm_out_f + lstm_out_b       
         
+        # pooling results from lstm
+        avg_pool = torch.mean(lstm_out_valid, 1)
+        max_pool, _ = torch.max(lstm_out_valid, 1)
+        concat = torch.cat((avg_pool, max_pool), 1)    
+
         # lstm hidden state to output space
-        out = F.relu(self.fc1(lstm_out_valid))
+        out = F.relu(self.fc1(concat))
         out = F.relu(self.fc2(out))
         out = self.fc3(out)
-        
+        out = out.reshape(batch_size, -1)
+
         # compute scores
         scores = F.log_softmax(out, dim=1)
         
-        return scores    
+        return scores  
 
     def forward_vlen(self, Xs, _aa2id):
         batch_size = len(Xs)
@@ -110,30 +107,22 @@ class LSTM_Bi(nn.Module):
         lstm_out_b, _ = self.lstm_b(Xs_b, ini_hc_state_b)
         
         # unpack outputs
-        lstm_out_f, lstm_out_len = pad_packed_sequence(lstm_out_f, batch_first=True)
+        lstm_out_f, _ = pad_packed_sequence(lstm_out_f, batch_first=True)
         lstm_out_b, _            = pad_packed_sequence(lstm_out_b, batch_first=True)
         
-        lstm_out_valid_f = lstm_out_f.reshape(-1, self.hidden_dim)
-        lstm_out_valid_b = lstm_out_b.reshape(-1, self.hidden_dim)    
+        lstm_out_valid = lstm_out_f + lstm_out_b
         
-        idx_f = []
-        [idx_f.extend([i*lmax+j for j in range(l)]) for i, l in enumerate(Xs_len)]
-        idx_f = torch.tensor(idx_f, device=self.device)
-        
-        idx_b = []
-        [idx_b.extend([i*lmax+j for j in range(l)][::-1]) for i, l in enumerate(Xs_len)]
-        idx_b = torch.tensor(idx_b, device=self.device)     
-        
-        lstm_out_valid_f = torch.index_select(lstm_out_valid_f, 0, idx_f)
-        lstm_out_valid_b = torch.index_select(lstm_out_valid_b, 0, idx_b)
-        
-        lstm_out_valid = lstm_out_valid_f + lstm_out_valid_b       
-        
+        # pooling results from lstm
+        avg_pool = torch.mean(lstm_out_valid, 1)
+        max_pool, _ = torch.max(lstm_out_valid, 1)
+        concat = torch.cat((avg_pool, max_pool), 1)    
+
         # lstm hidden state to output space
-        out = F.relu(self.fc1(lstm_out_valid))
+        out = F.relu(self.fc1(concat))
         out = F.relu(self.fc2(out))
         out = self.fc3(out)
-        
+        out = out.reshape(batch_size, -1)
+
         # compute scores
         scores = F.log_softmax(out, dim=1)
         
@@ -157,4 +146,3 @@ class LSTM_Bi(nn.Module):
         param_dict['hidden_dim'] = self.hidden_dim
         param_dict['fixed_len'] = self.fixed_len
         return param_dict
-        

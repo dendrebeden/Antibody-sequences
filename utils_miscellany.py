@@ -20,6 +20,7 @@ def load_config_xml(fn):
     assert rslt['__init__']['fixed_len'] in ['True', 'true', 'T', 't', 'False', 'false', 'F', 'f']
     rslt['__init__']['embedding_dim'] = int(rslt['__init__']['embedding_dim'])
     rslt['__init__']['hidden_dim'] = int(rslt['__init__']['hidden_dim'])
+    rslt['__init__']['out_dim'] = int(rslt['__init__']['out_dim'])
     rslt['__init__']['gapped'] = bool(rslt['__init__']['gapped'] in ['True', 'true', 'T', 't'])
     rslt['__init__']['fixed_len'] = bool(rslt['__init__']['fixed_len'] in ['True', 'true', 'T', 't'])
     rslt['fit']['n_epoch'] = int(rslt['fit']['n_epoch'])

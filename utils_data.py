@@ -7,7 +7,12 @@ Created on Mon Jul  8 16:05:54 2019
 """
 
 import pandas as pd
+import os
 
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
 from torch.utils.data import Dataset
 
 # true if gapped else false
@@ -53,6 +58,55 @@ class ProteinSeqDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx]
+
+def preprocess_classification_data(
+    human_path: str,
+    mouse_path: str,
+    save_path: str
+) -> None:
+    # Data load
+    human = pd.read_csv(human_path, header=None)
+    mouse = pd.read_csv(mouse_path, header=None)
+
+    human.columns = ["sequence"]
+    mouse.columns = ["sequence"]
+
+    # Map human and mouse target to 1 and 0 correspondingly
+    human["target"] = 1
+    mouse["target"] = 0
+    
+    # Human train/val/test split
+    human_train, human_test = train_test_split(human,
+    test_size=0.1, shuffle = True, random_state = 1)
+
+    human_val, human_test = train_test_split(human_test, 
+    test_size=0.5, random_state= 1) # 0.1 x 0.5 = 0.05
+    
+    # Human train/val/test split
+    mouse_train, mouse_test = train_test_split(mouse,
+    test_size=0.1, shuffle = True, random_state = 1)
+
+    mouse_val, mouse_test = train_test_split(mouse_test, 
+    test_size=0.5, random_state= 1) # 0.1 x 0.5 = 0.05
+    
+    # Concat and shuffle human/mouse data
+    train = shuffle(
+    pd.concat([human_train, mouse_train], ignore_index=True)
+    )
+    val = shuffle(
+        pd.concat([human_val, mouse_val], ignore_index=True)
+    )
+    test = shuffle(
+        pd.concat([human_test, mouse_test], ignore_index=True)
+    )
+    
+    # Export final tables
+    os.makedirs(save_path, exist_ok=True)
+    train.to_csv(os.path.join(save_path, "train_vlen.txt"), index=False)
+    val.to_csv(os.path.join(save_path, "val_vlen.txt"), index=False)
+    test.to_csv(os.path.join(save_path, "test_vlen.txt"), index=False)
+    
+    return None
 
 def collate_fn_cls(batch):
     return [x[0] for x in batch], [x[1] for x in batch]

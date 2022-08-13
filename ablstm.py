@@ -7,7 +7,7 @@ Created on Wed Jul 10 22:02:40 2019
 
 import argparse
 from utils_miscellany import load_config_xml
-from model import ModelLSTM
+from model import ModelLSTM, ModelCNN
 
 if __name__ == '__main__':
     # main parser
@@ -19,6 +19,7 @@ if __name__ == '__main__':
     parser_fit.add_argument('TRN_FN', help='training data file')
     parser_fit.add_argument('VLD_FN', help='validation data file')
     parser_fit.add_argument('SAVE_FP', help='model save path')
+    parser_fit.add_argument('--model', choices=['l', 'c'], default='l',  help='classification model to choose: l - "LSTM-Bi", c - "CNN"')
     parser_fit.add_argument('-l', default='', help='model file to load (default: \"\")')
     parser_fit.add_argument('-c', default='./ablstm.config', help='configuration XML file (default: \"./ablstm.config\")')
     parser_fit.add_argument('-d', default='cpu', help='device (default: \"cpu\")')
@@ -28,6 +29,7 @@ if __name__ == '__main__':
     parser_eval.add_argument('TST_FN', help='evaluation data file')
     parser_eval.add_argument('MDL_FN', help='model file to load')
     parser_eval.add_argument('SCR_FN', help='file to save scores')
+    parser_eval.add_argument('--model', choices=['l', 'c'], default='l', help='model model to choose: l - "LSTM-Bi", c - "CNN"')
     parser_eval.add_argument('-c', default='./ablstm.config', help='configuration XML file (default: \"./ablstm.config\")')
     parser_eval.add_argument('-d', default='cpu', help='device (default: \"cpu\")')
     
@@ -35,18 +37,27 @@ if __name__ == '__main__':
     args = parser.parse_args()
     conf = load_config_xml(args.c)
     
+    if args.model == 'l':
+        ModelCls = ModelLSTM
+    elif args.model == 'c':
+        ModelCls = ModelCNN
+    else:
+        # should be catch earlier in parser but just in case
+        raise ValueError("Wrong model was chosen!")
+    
     if args.cmd == 'fit':
         # initialize model
         if not args.l:
             param_ini = {'embedding_dim': conf['__init__']['embedding_dim'],
                          'hidden_dim': conf['__init__']['hidden_dim'],
+                         'out_dim': conf['__init__']['out_dim'],
                          'gapped': conf['__init__']['gapped'],
                          'fixed_len': conf['__init__']['fixed_len'],
                          'device': args.d}
-            model = ModelLSTM(**param_ini)
+            model = ModelCls(**param_ini)
         else:
             param_ini = {'device': args.d}
-            model = ModelLSTM(**param_ini)
+            model = ModelCls(**param_ini)
             model.load(args.l)
         
         # fit model
@@ -61,7 +72,7 @@ if __name__ == '__main__':
         
     elif args.cmd == 'eval':
         param_ini = {'device': args.d}
-        model = ModelLSTM(**param_ini)
+        model = ModelCls(**param_ini)
         model.load(args.MDL_FN)
         param_eval = {'fn': args.TST_FN, 'batch_size': conf['eval']['batch_size']}
         scores = model.eval(**param_eval)
